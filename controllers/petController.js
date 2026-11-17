@@ -6,7 +6,7 @@ function newPetForm(req, res) {
 }
 
 // Handle Add Pet Submission
-function createPet(req, res) {
+async function createPet(req, res) {
   const { pet_name, species, breed, age } = req.body;
   let petImage;
 
@@ -18,13 +18,13 @@ function createPet(req, res) {
 
   const ownerId = req.session.user.id;
 
-  petModel.createPet(ownerId, pet_name, species, breed, age, petImage, (err) => {
-    if (err) {
-      console.error(err);
-      return res.send('Failed to add pet.');
-    }
-    res.redirect('/journals');
-  });
+  try {
+    await petModel.createPet(ownerId, { name: pet_name, species, breed, age, image: petImage });
+    return res.redirect('/journals');
+  } catch (error) {
+    console.error(error);
+    return res.send('Failed to add pet.');
+  }
 }
 
 module.exports = { newPetForm, createPet };

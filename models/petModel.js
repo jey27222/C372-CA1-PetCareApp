@@ -1,8 +1,8 @@
 const connection = require('../config/db');
 
-function createPet(ownerId, name, species, breed, age, image, callback) {
+function createPet(ownerId, { name, species, breed, age, image }, database = connection.promise()) {
   const sql = 'INSERT INTO pets (owner_id, name, species, breed, age, image) VALUES (?, ?, ?, ?, ?, ?)';
-  connection.query(sql, [ownerId, name, species, breed, age, image], callback);
+  return database.query(sql, [ownerId, name, species, breed, age, image]);
 }
 
 function getPetsByOwner(ownerId, callback) {

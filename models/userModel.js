@@ -1,12 +1,29 @@
 const connection = require('../config/db');
+const petModel = require('./petModel');
 
-function createUser(username, hashedPassword, name, role, callback) {
-  const sql = 'INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)';
-  connection.query(sql, [username, hashedPassword, name, role], callback);
+async function createUserWithPet(user, pet) {
+  const sql = "INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, 'user')";
+  const transaction = await connection.promise().getConnection();
+  try {
+    await transaction.beginTransaction();
+    const [result] = await transaction.query(sql, [user.username, user.passwordHash, user.name]);
+    await petModel.createPet(result.insertId, pet, transaction);
+    await transaction.commit();
+  } catch (error) {
+    try {
+      await transaction.rollback();
+    } catch (rollbackError) {
+      transaction.destroy();
+      throw rollbackError;
+    }
+    throw error;
+  } finally {
+    transaction.release();
+  }
 }
 
 function findByCredentials(username, hashedPassword, callback) {
-  const sql = 'SELECT * FROM users WHERE username = ? AND password = ?';
+  const sql = 'SELECT id, username, name, role FROM users WHERE username = ? AND password = ?';
   connection.query(sql, [username, hashedPassword], callback);
 }
 
@@ -26,7 +43,7 @@ function deleteUser(userId, callback) {
 }
 
 module.exports = {
-  createUser,
+  createUserWithPet,
   findByCredentials,
   getAllUsers,
   getUserById,

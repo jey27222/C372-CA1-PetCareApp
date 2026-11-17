@@ -1,41 +1,50 @@
 const userModel = require('../models/userModel');
-const petModel = require('../models/petModel');
+const { unlink } = require('node:fs/promises');
 const { sha256Hash } = require('../helpers/hash');
 
 // Sign Up Page
 function signupForm(req, res) {
-  res.render('signup', { session: req.session });
+  res.render('signup', { errors: req.flash('error'), session: req.session });
+}
+
+function hasText(value, maxLength = Infinity) {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= maxLength;
+}
+
+async function rejectSignup(req, res, message) {
+  if (req.file) {
+    try {
+      await unlink(req.file.path);
+    } catch (error) {
+      console.error('Unable to remove rejected signup upload:', error.code);
+    }
+  }
+  req.flash('error', message);
+  return res.redirect('/signup');
 }
 
 // Handle Sign Up Submission
-function signup(req, res) {
-  const { username, password, name, role, pet_name, species, breed, age } = req.body;
-  let petImage;
-  if (req.file) {
-    petImage = req.file.filename; // Save only the filename
-  } else {
-    petImage = null;
+async function signup(req, res) {
+  const { username, password, name, pet_name, species, breed, age } = req.body || {};
+  if (!hasText(username, 50) || typeof password !== 'string' || !password ||
+      !hasText(name, 100)) {
+    return rejectSignup(req, res, 'Enter valid account details.');
+  }
+  if (!hasText(pet_name, 80) || !hasText(species, 50) || !hasText(breed, 80) ||
+      typeof age !== 'string' || !/^\d+$/.test(age) || Number(age) > 255) {
+    return rejectSignup(req, res, 'Enter valid pet details and an age from 0 to 255.');
   }
 
-  const hashedPassword = sha256Hash(password);
-  userModel.createUser(username, hashedPassword, name, role, (err, result) => {
-    if (err) {
-      console.error('Error creating user:', err);
-      req.flash('error', 'Sign up failed. Please try again.');
-      return res.redirect('/signup');
-    }
-
-    const userId = result.insertId;
-    petModel.createPet(userId, pet_name, species, breed, age, petImage, (err2) => {
-      if (err2) {
-        console.error('Error creating pet:', err2);
-        req.flash('error', 'Sign up failed while saving pet. Please try again.');
-        return res.redirect('/signup');
-      }
-
-      res.redirect('/login');
-    });
-  });
+  try {
+    await userModel.createUserWithPet(
+      { username, passwordHash: sha256Hash(password), name },
+      { name: pet_name, species, breed, age: Number(age), image: req.file?.filename ?? null }
+    );
+    return res.redirect('/login');
+  } catch (error) {
+    console.error('Sign up failed:', error.code || error.message);
+    return rejectSignup(req, res, 'Sign up failed. Please try again.');
+  }
 }
 
 // Login Page
@@ -49,9 +58,13 @@ function loginForm(req, res) {
 
 // Handle Login
 function login(req, res) {
-  const { username, password } = req.body;
+  const { username, password } = req.body || {};
+  if (!hasText(username) || typeof password !== 'string' || !password) {
+    req.flash('error', 'Invalid username or password.');
+    return res.redirect('/login');
+  }
   const hashedPassword = sha256Hash(password);
-  
+
   userModel.findByCredentials(username, hashedPassword, (err, results) => {
     if (err) {
       console.error('Login query error:', err);

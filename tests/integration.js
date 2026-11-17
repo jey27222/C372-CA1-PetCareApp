@@ -211,18 +211,54 @@ async function main() {
       await request('/journals/delete/5',{user:'clara'});
       assert.deepEqual((await admin.query('SELECT * FROM journal WHERE id=5'))[0],before);
     });
-    await check('Sign-up with first pet, admin dashboard/list/detail/delete and role checks', async () => {
+    await check('Public sign-up creates a regular user and first pet; admin routes enforce roles', async () => {
       const form = new FormData();
-      for(const [k,v] of Object.entries({username:'test_signup',password:'test-only',name:'Test User',role:'user',pet_name:'First Pet',species:'Dog',breed:'Mixed',age:'2'})) form.append(k,v);
+      for(const [k,v] of Object.entries({username:'test_signup',password:'test-only',name:'Test User',role:'admin',pet_name:'First Pet',species:'Dog',breed:'Mixed',age:'2'})) form.append(k,v);
       assert.equal((await request('/signup',{method:'POST',form})).location,'/login');
       const [users]=await admin.query("SELECT * FROM users WHERE username='test_signup'");
       assert.equal(users.length,1); assert.equal(users[0].password.length,64);
+      assert.equal(users[0].role, 'user');
       assert.equal((await admin.query('SELECT * FROM pets WHERE owner_id=?',[users[0].id]))[0].length,1);
       for(const url of ['/admin/dashboard','/admin/users','/admin/users/'+users[0].id]) assert.equal((await request(url,{user:'admin1'})).status,200);
       assert.match((await request('/admin/users',{user:'clara'})).text,/Access Denied/);
       assert.equal((await request('/admin/users/delete/'+users[0].id,{user:'admin1'})).location,'/admin/users');
       assert.equal((await admin.query('SELECT * FROM users WHERE id=?',[users[0].id]))[0].length,0);
       assert.equal((await admin.query('SELECT * FROM pets WHERE owner_id=?',[users[0].id]))[0].length,0);
+    });
+    await check('Missing login password and invalid sign-up inputs get visible feedback', async () => {
+      const login = await request('/login', { method: 'POST', body: { username: 'clara' } });
+      assert.equal(login.status, 302);
+      assert.equal(login.location, '/login');
+      assert.match((await request('/login')).text, /Invalid username or password/);
+
+      const signup = await request('/signup', { method: 'POST', body: {
+        username: 'invalid_signup', password: 'test-only-value', name: 'Test User',
+        pet_name: 'First Pet', species: 'Dog', breed: 'Mixed', age: '300'
+      } });
+      assert.equal(signup.location, '/signup');
+      assert.match((await request('/signup')).text, /Enter valid pet details and an age from 0 to 255/);
+      assert.equal((await admin.query('SELECT id FROM users WHERE username = ?', ['invalid_signup']))[0].length, 0);
+    });
+    await check('Failed first pet insert rolls back sign-up and allows retry', async () => {
+      const body = {
+        username: 'retry_signup', password: 'test-only-value', name: 'Test User',
+        pet_name: 'First Pet', species: 'Dog', breed: 'Mixed', age: '2'
+      };
+      await admin.query("CREATE TRIGGER fail_signup_pet BEFORE INSERT ON pets FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Isolated test pet failure'");
+      try {
+        const response = await request('/signup', { method: 'POST', body });
+        assert.equal(response.location, '/signup');
+        assert.match((await request('/signup')).text, /Sign up failed\. Please try again/);
+        assert.equal((await admin.query('SELECT id FROM users WHERE username = ?', [body.username]))[0].length, 0);
+      } finally {
+        await admin.query('DROP TRIGGER fail_signup_pet');
+      }
+      const retry = await request('/signup', { method: 'POST', body });
+      assert.equal(retry.location, '/login');
+      const [rows] = await admin.query(
+        'SELECT p.name FROM pets p JOIN users u ON u.id = p.owner_id WHERE u.username = ?', [body.username]
+      );
+      assert.deepEqual(rows.map(pet => pet.name), ['First Pet']);
     });
     await check('Logout removes access', async () => {
       assert.equal((await request('/logout',{user:'clara'})).location,'/login');
