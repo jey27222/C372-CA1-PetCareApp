@@ -1,0 +1,26 @@
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+*.pem
+*.key
+*.p12
+*.pfx
+*.sql.gz
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+coverage/
+
+# Keep the starter images but exclude timestamped local uploads.
+public/images/[0-9]*_*
+!public/images/1751888689664_chester.jpg
+!public/images/1751900625977_Mochi1.png
+!public/images/1751905564825_hammy.jpg
+!public/images/1751905638867_MIlly.jpg
+!public/images/1751910551978_hammy.jpg
+!public/images/1751910615397_chester.jpg
+!public/images/1751910682084_MIlly.jpg
+!public/images/1751953011050_chester.jpg

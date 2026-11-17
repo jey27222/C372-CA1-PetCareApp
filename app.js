@@ -1,0 +1,40 @@
+// Pet Care Journal System
+const express = require('express');
+const session = require('express-session');
+const flash = require('connect-flash');
+const app = express();
+const PORT = Number(process.env.PORT) || 3000;
+
+// View Engine and Middleware
+app.set('view engine', 'ejs');
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static('public'));
+
+app.use(session({
+  // A different session secret is generated for each local run unless configured.
+  secret: process.env.SESSION_SECRET || require('crypto').randomBytes(32).toString('hex'),
+  resave: false,
+  saveUninitialized: true
+}));
+
+app.use(flash());
+
+// Routes
+app.use(require('./routes/indexRoutes'));
+app.use(require('./routes/authRoutes'));
+app.use(require('./routes/adminRoutes'));
+app.use(require('./routes/petRoutes'));
+app.use(require('./routes/journalRoutes'));
+app.use(require('./routes/paymentRoutes'));
+app.use(require('./routes/serviceRoutes'));
+
+// =========================
+// Start Server
+// =========================
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`App running on http://localhost:${PORT}`));
+}
+
+// Export for the local HTTP checks; node app.js still starts the app normally.
+module.exports = app;
